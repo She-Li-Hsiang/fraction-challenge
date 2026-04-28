@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>分數大挑戰：破關獎勵版</title>
+    <style>
+        :root { 
+            --primary-blue: #3498db; 
+            --success-green: #2ecc71; 
+            --error-red: #e74c3c;
+            --warning-orange: #f39c12;
+            --bg-light: #f4f7f6;
+            --text-dark: #2c3e50; 
+        }
+        body { font-family: "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; align-items: center; background: var(--bg-light); padding: 20px; color: var(--text-dark); }
+        
+        .nav-menu { display: flex; gap: 20px; margin-bottom: 30px; }
+        .nav-btn { padding: 15px 30px; font-size: 18px; border-radius: 12px; border: none; cursor: pointer; background: white; color: var(--text-dark); box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.3s; font-weight: bold; }
+        .nav-btn.active { background: var(--primary-blue); color: white; }
+
+        .fraction { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 5px; font-size: 24px; }
+        .fraction .numerator { border-bottom: 3px solid #333; padding: 0 5px; }
+        .fraction .denominator { padding: 0 5px; }
+        
+        .question-card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; margin-bottom: 25px; width: 100%; max-width: 800px; }
+        .progress-info { font-size: 16px; color: #7f8c8d; margin-bottom: 10px; }
+        .question-text { font-size: 26px; margin-bottom: 15px; font-weight: bold; }
+        
+        .visual-container { display: flex; justify-content: center; align-items: center; gap: 15px; margin: 20px auto; flex-wrap: wrap; min-height: 110px; }
+        .visual-model { width: 140px; height: 100px; border: 3px solid #333; position: relative; background: #fff; overflow: hidden; flex-shrink: 0; }
+        .cell { position: absolute; box-sizing: border-box; border: 0.5px solid rgba(0,0,0,0.1); height: 100%; }
+
+        .options-row { display: flex; justify-content: center; gap: 12px; width: 100%; max-width: 900px; margin-bottom: 30px; }
+        .option-btn { 
+            flex: 1; background: white; border: 2px solid #ddd; padding: 25px 5px; border-radius: 15px; 
+            cursor: pointer; transition: all 0.2s; display: flex; justify-content: center; align-items: center; min-width: 100px;
+        }
+        .option-btn:hover { border-color: var(--primary-blue); transform: translateY(-2px); }
+        .option-btn.selected { border-color: var(--primary-blue); background: #ebf5fb; border-width: 3px; }
+        .option-btn.correct-reveal { background: #d4edda !important; border-color: var(--success-green) !important; }
+        .option-btn.wrong-reveal { background: #f8d7da !important; border-color: var(--error-red) !important; }
+
+        .controls { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        #feedback { font-size: 22px; font-weight: bold; height: 35px; }
+        .main-action-btn { padding: 14px 50px; border-radius: 50px; font-size: 20px; cursor: pointer; font-weight: bold; border: none; transition: 0.2s; }
+        .btn-submit { background: var(--warning-orange); color: white; }
+        .btn-next { background: var(--primary-blue); color: white; display: none; }
+        .score-display { font-size: 18px; color: #7f8c8d; }
+
+        /* 笑話區域樣式 */
+        .joke-box {
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff9c4;
+            border-radius: 15px;
+            border-left: 8px solid #fbc02d;
+            font-size: 20px;
+            line-height: 1.6;
+            max-width: 600px;
+            text-align: left;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
+            display: none;
+        }
+        .joke-title { font-weight: bold; color: #f57f17; margin-bottom: 10px; display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="nav-menu">
+        <button id="mode-simplest" class="nav-btn active" onclick="switchMode('simplest')">最簡分數挑戰</button>
+        <button id="mode-equivalent" class="nav-btn" onclick="switchMode('equivalent')">等值分數挑戰</button>
+    </div>
+
+    <div class="question-card">
+        <div class="progress-info">第 <span id="currentQ">1</span> / 10 題</div>
+        <div id="modeTitle" class="question-text">載入中...</div>
+        <div id="targetDisplay"></div>
+        <div id="modelContainer" class="visual-container"></div>
+        <div id="subHint" style="font-size: 14px; color: #95a5a6; margin-top: 5px;"></div>
+    </div>
+
+    <div class="options-row" id="optionsContainer"></div>
+
+    <div class="controls">
+        <div id="feedback"></div>
+        <button id="submitBtn" class="main-action-btn btn-submit" onclick="submitAnswer()">確認送出</button>
+        <button id="nextBtn" class="main-action-btn btn-next" onclick="nextQuestion()">下一題</button>
+        <div class="score-display">目前累計得分：<span id="score">0</span></div>
+    </div>
+
+    <div id="jokeArea" class="joke-box">
+        <span class="joke-title">🎉 挑戰達成獎勵！送你一個冷笑話：</span>
+        <span id="jokeContent"></span>
+    </div>
+
+<script>
+    let currentMode = 'simplest'; 
+    let score = 0;
+    let questionCount = 0;
+    let currentOptions = [];
+    let selectedIndices = new Set();
+    let isAnswered = false;
+
+    // 笑話資料庫
+    const jokes = [
+        "問：為什麼不能跟分數吵架？<br>答：因為它會跟你「約分」（約份）。",
+        "問：有一天，1 分數跟 2 分數走在路上，突然看到 0.5。1 說：『你看，那個人只有一半！』",
+        "問：哪種動物最會約分？<br>答：斑馬。因為它身上全是一格一格的「線」。",
+        "問：為什麼冰塊最想去上數學課？<br>答：因為它想學習如何變成『整數』（凍住）。",
+        "問：為什麼數學書總是很難過？<br>答：因為它裡面有太多的問題（Problems）了。",
+        "問：一跟零誰比較漂亮？<br>答：一。因為『一』表人才。",
+        "問：小明數學考了 0 分，爸爸說：『怎麼考這麼差？』小明：『沒關係，至少這是一個整數！』",
+        "問：誰是數學界的國王？<br>答：分母。因為每個人都在它『下面』。"
+    ];
+
+    function getGCD(a, b) { return b === 0 ? a : getGCD(b, a % b); }
+    function isSimplest(n, d) { return getGCD(n, d) === 1; }
+
+    function getFractionHTML(n, d, size = "28px") { 
+        return `<div class="fraction" style="font-size: ${size}"><div class="numerator">${n}</div><div class="denominator">${d}</div></div>`; 
+    }
+
+    function renderFractionModel(n, d) {
+        const container = document.getElementById('modelContainer');
+        container.innerHTML = '';
+        const numFullBoxes = Math.ceil(n / d);
+        let remainingN = n;
+        for (let i = 0; i < numFullBoxes; i++) {
+            const box = document.createElement('div');
+            box.className = 'visual-model';
+            const fillCount = Math.min(remainingN, d);
+            for (let j = 0; j < fillCount; j++) {
+                let cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.style.width = (100 / d) + '%';
+                cell.style.left = (j * 100 / d) + '%';
+                cell.style.background = '#3498db';
+                box.appendChild(cell);
+            }
+            for (let k = 1; k < d; k++) {
+                let line = document.createElement('div');
+                line.style.cssText = `position:absolute; left:${k * 100 / d}%; width:2px; height:100%; background:#333; z-index:10;`;
+                box.appendChild(line);
+            }
+            container.appendChild(box);
+            remainingN -= fillCount;
+        }
+    }
+
+    function switchMode(mode) {
+        currentMode = mode;
+        score = 0;
+        questionCount = 0;
+        document.getElementById('score').innerText = "0";
+        document.getElementById('jokeArea').style.display = 'none';
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`mode-${mode}`).classList.add('active');
+        generateQuestion();
+    }
+
+    function generateQuestion() {
+        if (questionCount >= 10) {
+            showFinalScore();
+            return;
+        }
+        questionCount++;
+        isAnswered = false;
+        selectedIndices.clear();
+        document.getElementById('currentQ').innerText = questionCount;
+        document.getElementById('feedback').innerText = '';
+        document.getElementById('submitBtn').style.display = 'block';
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('nextBtn').style.display = 'none';
+
+        if (currentMode === 'simplest') {
+            setupSimplestQuestion();
+        } else {
+            setupEquivalentQuestion();
+        }
+        renderOptions();
+    }
+
+    function setupSimplestQuestion() {
+        document.getElementById('modeTitle').innerText = "找找看，哪一個是最簡分數？";
+        document.getElementById('subHint').innerText = "(只有一個正確答案，且必須與題目等值)";
+        let n, d, g, isSetupValid = false;
+        while (!isSetupValid) {
+            d = Math.floor(Math.random() * 10) + 3; 
+            n = Math.floor(Math.random() * (d * 2.5)) + 2; 
+            g = getGCD(n, d);
+            if (g > 1 && n % d !== 0) { isSetupValid = true; }
+        }
+        document.getElementById('targetDisplay').innerHTML = "題目分數：" + getFractionHTML(n, d, "36px");
+        renderFractionModel(n, d);
+        currentOptions = [];
+        currentOptions.push({ n: n/g, d: d/g, isCorrect: true });
+        while(currentOptions.length < 4) {
+            let fD = Math.floor(Math.random() * 12) + 2;
+            let fN = Math.floor(Math.random() * (fD * 2)) + 1;
+            if ((fN / fD !== n / d) && !currentOptions.some(o => o.n === fN && o.d === fD)) {
+                currentOptions.push({ n: fN, d: fD, isCorrect: false });
+            }
+        }
+        currentOptions.sort(() => Math.random() - 0.5);
+    }
+
+    function setupEquivalentQuestion() {
+        document.getElementById('modeTitle').innerText = "找找看，哪些是等值分數？";
+        document.getElementById('subHint').innerText = "(答案可能不只一個)";
+        let d = Math.floor(Math.random() * 8) + 3;
+        let n = Math.floor(Math.random() * (d * 2.2)) + 2;
+        let g = getGCD(n, d);
+        let sN = n / g; let sD = d / g;
+        document.getElementById('targetDisplay').innerHTML = "目標分數：" + getFractionHTML(n, d, "40px");
+        renderFractionModel(n, d);
+        currentOptions = [];
+        let correctCount = Math.random() > 0.5 ? 2 : 1;
+        let usedMults = new Set([n/sN]);
+        while(currentOptions.length < correctCount) {
+            let m = Math.floor(Math.random() * 6) + 1;
+            if(!usedMults.has(m)) {
+                currentOptions.push({ n: sN * m, d: sD * m, isCorrect: true });
+                usedMults.add(m);
+            }
+        }
+        while(currentOptions.length < 4) {
+            let fD = Math.floor(Math.random() * 15) + 2;
+            let fN = Math.floor(Math.random() * (fD * 2)) + 1;
+            if (Math.abs(fN/fD - n/d) > 0.001) {
+                currentOptions.push({ n: fN, d: fD, isCorrect: false });
+            }
+        }
+        currentOptions.sort(() => Math.random() - 0.5);
+    }
+
+    function renderOptions() {
+        const container = document.getElementById('optionsContainer');
+        container.innerHTML = '';
+        currentOptions.forEach((opt, idx) => {
+            const btn = document.createElement('div');
+            btn.className = 'option-btn';
+            btn.innerHTML = getFractionHTML(opt.n, opt.d);
+            btn.onclick = () => {
+                if (isAnswered) return;
+                if (currentMode === 'simplest') {
+                    selectedIndices.clear();
+                    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+                }
+                if (selectedIndices.has(idx)) {
+                    selectedIndices.delete(idx);
+                    btn.classList.remove('selected');
+                } else {
+                    selectedIndices.add(idx);
+                    btn.classList.add('selected');
+                }
+            };
+            container.appendChild(btn);
+        });
+    }
+
+    function submitAnswer() {
+        if (selectedIndices.size === 0) return alert("請先選擇你的答案！");
+        isAnswered = true;
+        document.getElementById('submitBtn').disabled = true;
+        const btns = document.getElementsByClassName('option-btn');
+        let isPerfect = true;
+        let correctCountFound = 0;
+        let totalCorrect = currentOptions.filter(o => o.isCorrect).length;
+        currentOptions.forEach((opt, idx) => {
+            if (opt.isCorrect) {
+                btns[idx].classList.add('correct-reveal');
+                if (selectedIndices.has(idx)) correctCountFound++;
+            } else {
+                if (selectedIndices.has(idx)) {
+                    btns[idx].classList.add('wrong-reveal');
+                    isPerfect = false;
+                }
+            }
+        });
+        if (isPerfect && correctCountFound === totalCorrect) {
+            document.getElementById('feedback').innerText = "🎉 答對了！非常優秀！";
+            document.getElementById('feedback').style.color = "var(--success-green)";
+            score += 10;
+        } else {
+            document.getElementById('feedback').innerText = "💡 答案不完全正確，加油！";
+            document.getElementById('feedback').style.color = "var(--error-red)";
+        }
+        document.getElementById('score').innerText = score;
+        document.getElementById('submitBtn').style.display = 'none';
+        document.getElementById('nextBtn').style.display = 'block';
+    }
+
+    function nextQuestion() { generateQuestion(); }
+
+    function showFinalScore() {
+        const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+        document.body.innerHTML = `
+            <div class="question-card" style="margin-top:50px; display: flex; flex-direction: column; align-items: center;">
+                <h1>🎉 挑戰結束！</h1>
+                <p style="font-size:24px;">你在這回合得到的總分是：</p>
+                <div style="color:var(--primary-blue); font-size:64px; font-weight:bold; margin: 20px 0;">${score}</div>
+                
+                <div class="joke-box" style="display: block;">
+                    <span class="joke-title">🎁 破關獎勵：送你一個冷笑話</span>
+                    <p id="jokeContent">${randomJoke}</p>
+                </div>
+
+                <button class="main-action-btn btn-next" style="display:block; margin-top: 30px;" onclick="location.reload()">重新開始挑戰</button>
+            </div>
+        `;
+    }
+
+    window.onload = () => switchMode('simplest');
+</script>
+</body>
+</html>
